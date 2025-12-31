@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="LB Quantum | Quantitative Terminal", layout="wide")
+st.set_page_config(page_title="LB Quantum Analytics", layout="wide")
 
 st.markdown("""
     <style>
@@ -17,7 +17,7 @@ st.markdown("""
 
 # --- HEADER ---
 st.markdown('<p class="title-text">LB QUANTUM ANALYTICS</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle-text">Professional Quantitative Terminal | S&P 100 Market Coverage</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle-text">Quantitative Analysis Terminal | S&P 100 Intelligence</p>', unsafe_allow_html=True)
 st.divider()
 
 # --- LISTE DES 100 ---
@@ -34,18 +34,20 @@ tickers_sp100 = [
     "NOW", "SNPS", "CDNS", "ELV", "CB", "TGT", "MO", "DHR", "ICE", "PGR"
 ]
 
-# --- FONCTION DE CALCUL AVEC CACHE (Pour éviter les changements brusques) ---
-@st.cache_data(ttl=3600)  # Garde les données en mémoire pendant 1 heure
+# --- FONCTION DE CALCUL ---
+@st.cache_data(ttl=3600)
 def fetch_market_data():
     results = []
-    # On télécharge les données d'un coup pour les 100 tickers pour plus de stabilité
-    data = yf.download(tickers_sp100, period="1mo", interval="1d", progress=False)['Close']
+    # Téléchargement groupé
+    raw_data = yf.download(tickers_sp100, period="1mo", interval="1d", progress=False)
+    close_data = raw_data['Close']
     
     for t in tickers_sp100:
         try:
-            series = data[t].dropna()
+            series = close_data[t].dropna()
             if len(series) < 14: continue
             
+            # Calcul RSI
             delta = series.diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -53,50 +55,55 @@ def fetch_market_data():
             rsi = 100 - (100 / (1+rs))
             current_rsi = int(rsi.iloc[-1])
             
-            if current_rsi < 40: status = "LANCER ACHAT"
-            elif current_rsi > 60: status = "ZONE DE VENTE"
-            else: status = "NEUTRE / HOLD"
+            # Signaux mathématiques (RSI standard)
+            if current_rsi < 35: status = "🟢 OPPORTUNITÉ"
+            elif current_rsi > 65: status = "🔴 SURÉVALUÉ"
+            else: status = "⚪ NEUTRE"
             
-            results.append({"Ticker": t, "RSI": current_rsi, "Signal": status})
+            results.append({"Ticker": t, "RSI (14d)": current_rsi, "Analyse Technique": status})
         except:
             continue
     return pd.DataFrame(results)
 
-# --- AFFICHAGE DU SCANNER ---
-st.subheader("Market Intelligence Scanner")
+# --- SCANNER ---
+st.subheader("Market Momentum Scanner")
 
-# Chargement automatique ou rafraîchissement manuel
-if st.button('Actualiser les données du marché'):
+if st.button('🔄 Lancer un nouveau scan du Top 100'):
     st.cache_data.clear()
-    df_market = fetch_market_data()
+    with st.spinner('Analyse des flux financiers en cours...'):
+        df_market = fetch_market_data()
+    st.success('Scan terminé.')
 else:
     df_market = fetch_market_data()
 
-st.dataframe(df_market.sort_values(by="RSI"), use_container_width=True, height=400)
+st.dataframe(df_market.sort_values(by="RSI (14d)"), use_container_width=True, height=400)
 
 st.divider()
 
-# --- FOCUS TECHNIQUE ---
-target = st.selectbox("Analyse technique détaillée :", tickers_sp100)
+# --- ANALYSE DÉTAILLÉE ---
+st.subheader("Deep Asset Analysis")
+target = st.selectbox("Sélectionner un actif pour le graphique en bougies :", tickers_sp100)
 
 col_chart, col_stats = st.columns([2, 1])
 
 with col_chart:
     df_target = yf.download(target, period="1y", interval="1d", progress=False)
-    # Correction du format yfinance
     if isinstance(df_target.columns, pd.MultiIndex):
         df_target.columns = df_target.columns.get_level_values(0)
         
     fig = go.Figure(data=[go.Candlestick(
         x=df_target.index, open=df_target['Open'], high=df_target['High'],
-        low=df_target['Low'], close=df_target['Close']
+        low=df_target['Low'], close=df_target['Close'],
+        increasing_line_color='#00ff00', decreasing_line_color='#ff3131'
     )])
-    fig.update_layout(template="plotly_dark", height=400, margin=dict(l=0,r=0,t=0,b=0), xaxis_rangeslider_visible=False)
+    fig.update_layout(template="plotly_dark", height=450, margin=dict(l=0,r=0,t=0,b=0), xaxis_rangeslider_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 
 with col_stats:
-    last_p = df_target['Close'].iloc[-1]
-    st.metric(f"Cours {target}", f"{last_p:.2f} USD")
-    st.info("Les analyses sont figées pendant 1 heure pour garantir la stabilité des signaux institutionnels.")
+    current_val = df_target['Close'].iloc[-1]
+    st.metric(f"Dernier prix ({target})", f"{current_val:.2f} USD")
+    st.markdown("---")
+    st.write("**Note d'analyse :**")
+    st.write("Le graphique ci-contre affiche l'évolution historique sur 12 mois. Utilisez les bougies pour identifier les pressions acheteuses (vert) ou vendeuses (rouge).")
 
-st.caption(f"© {datetime.now().year} LB Quantum Analytics")
+st.caption(f"© {datetime.now().year} LB Quantum Analytics | Données certifiées S&P 100")
